@@ -11,12 +11,15 @@
 
 /*** defines ***/
 
+#define KILO_VERSION "0.0.1"
+
 #define CTRL_KEY(key) ((key) & 0x1f)
 
 /*** data ***/
 
 struct editorConfig
 {
+    int cursor_x, cursor_y;
     int screenrows;
     int screencols;
     struct termios original_termios;
@@ -140,9 +143,30 @@ void abFree(abuf *ab)
 
 void editorDrawRows(abuf *ab)
 {
-    for (int y = 0; y < Editor.screenrows; y++)
+    int y;
+    for (y = 0; y < Editor.screenrows; y++)
     {
-        abAppend(ab, "#", 1);
+        if(y == Editor.screenrows / 3)
+        {
+            char welcome[80];
+            int welcome_len = snprintf(welcome, sizeof(welcome),
+                                       "Kilo Editor -- version %s", KILO_VERSION);
+            if(welcome_len > Editor.screencols) welcome_len = Editor.screencols;
+
+            int centering = (Editor.screencols - welcome_len) / 2;
+            if (centering)
+            {
+                abAppend(ab, "#", 1);
+                centering--;
+            }
+            while (centering--) abAppend(ab, " ", 1);
+            abAppend(ab, welcome, welcome_len);
+        }
+        else
+        {
+            abAppend(ab, "#", 1);
+        }
+
         abAppend(ab, "\x1b[K", 3);
 
         if(y < Editor.screenrows - 1)
@@ -161,7 +185,10 @@ void editorRefreshScreen()
 
     editorDrawRows(&ab);
 
-    abAppend(&ab, "\x1b[H", 3);
+    char buffer[32];
+    snprintf(buffer, sizeof(buffer), "\x1b[%d;%dH", Editor.cursor_y + 1, Editor.cursor_x + 1);
+    abAppend(&ab, buffer, strlen(buffer));
+
     abAppend(&ab, "\x1b[?25h", 6);
 
     write(STDOUT_FILENO, ab.buffer, ab.length);
@@ -169,6 +196,25 @@ void editorRefreshScreen()
 }
 
 /*** input ***/
+
+void editorMoveCursor(char key)
+{
+    switch(key)
+    {
+    case 'a':
+        Editor.cursor_x--;
+        break;
+    case 'd':
+        Editor.cursor_x++;
+        break;
+    case 'w':
+        Editor.cursor_y--;
+        break;
+    case 's':
+        Editor.cursor_y++;
+        break;
+    }
+}
 
 void editorProcessKeypress()
 {
@@ -181,13 +227,24 @@ void editorProcessKeypress()
         write(STDIN_FILENO, "\x1b[H", 3);
         exit(0);
         break;
+
+    case 'w':
+    case 'a':
+    case 's':
+    case 'd':
+        editorMoveCursor(ch);
+        break;
     }
 }
 
 /*** init and main ***/
 
+
 void initEditor()
 {
+    Editor.cursor_x = 0;
+    Editor.cursor_y = 0;
+
     if(getWindowSize(&Editor.screenrows, &Editor.screencols) == -1) die("getWindowSize");
 }
 
